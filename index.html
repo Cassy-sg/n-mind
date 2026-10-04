@@ -3,14 +3,583 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
 <title>N-Mind</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="icon" type="image/png" href="favicon.png">
-<style>html,body{margin:0;height:100%;overflow:hidden;background:#f4f5f7}iframe{display:block;border:0;width:100%;height:100%}</style>
+<meta name="robots" content="noindex,nofollow">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;font-family:"Segoe UI","Yu Gothic UI","Hiragino Sans",Meiryo,sans-serif;background:#f4f5f7;color:#222;user-select:none}
+#stage{position:absolute;inset:0;cursor:grab;background-image:radial-gradient(#d5d9df 1px,transparent 1px);background-size:24px 24px;touch-action:none}
+#stage.panning{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#links{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none}
+.node{position:absolute;width:max-content;padding:6px 12px;border-radius:8px;background:#fff;border:2px solid #cfd4da;font-size:14px;line-height:1.4;white-space:pre;min-width:24px;min-height:33px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.node.l1{background:var(--c);border-color:var(--c);color:var(--fg);font-size:16px;font-weight:600;padding:8px 16px;border-radius:10px;min-height:42px}
+.node.root{background:var(--c);border-color:var(--c);color:var(--fg);font-size:22px;font-weight:700;padding:14px 28px;border-radius:16px;min-height:62px}
+.node.filled{background:var(--c);border-color:var(--c);color:var(--fg)}
+.node.sel{outline:3px solid #2f80ed;outline-offset:3px}
+.node.drop{outline:3px dashed #f2994a;outline-offset:3px}
+.node.drop-before{box-shadow:0 -5px 0 #f2994a}
+.node.drop-after{box-shadow:0 5px 0 #f2994a}
+.node.dragging{opacity:.55;pointer-events:none;z-index:10}
+.node[contenteditable=true]{white-space:pre-wrap;word-break:break-all;max-width:calc(40em + 60px);cursor:text;user-select:text;-webkit-user-select:text;outline:3px solid #2f80ed;outline-offset:3px}
+.tog{position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#fff;border:2px solid var(--c);font-size:11px;line-height:14px;text-align:center;color:#444;font-weight:700;cursor:pointer}
+.bar{position:fixed;display:flex;gap:4px;align-items:center;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.12);padding:6px;z-index:20}
+.bar button{border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:13px;color:#333;cursor:pointer}
+.bar button:hover{background:#eef1f5}
+.bar .sep{width:1px;height:20px;background:#e3e6ea;margin:0 2px}
+#tools{left:12px;top:12px}
+#zoom{right:12px;bottom:12px}
+#zoom span{min-width:46px;text-align:center;font-size:13px;color:#555}
+#palette{right:12px;top:12px;display:grid;grid-template-columns:repeat(6,26px);gap:6px;padding:10px}
+.sw{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15);cursor:pointer;padding:0}
+.sw.on{box-shadow:0 0 0 2px #fff,0 0 0 4px #2f80ed}
+#custom{position:relative;overflow:hidden;background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)}
+#custom input{position:absolute;inset:-8px;opacity:0;cursor:pointer;width:44px;height:44px}
+.brand{font-weight:800;font-size:14px;padding:0 8px 0 6px;color:#34495e;letter-spacing:.02em}
+#status{font-size:12px;color:#8a929c;padding:0 8px;min-width:64px}
+#status.err{color:#e74c3c;font-weight:600}
+#home{position:fixed;inset:0;background:#f4f5f7;z-index:35;overflow:auto;display:none}
+#home.open{display:block}
+#home .wrap{max-width:880px;margin:0 auto;padding:36px 24px 60px}
+#home .head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+#home .logo{font-weight:800;font-size:24px;color:#34495e;margin-right:auto;letter-spacing:.02em}
+#home .hb{border:0;font:inherit;font-size:14px;font-weight:600;padding:10px 18px;border-radius:8px;cursor:pointer;background:#fff;color:#333;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+#home .hb.pri{background:#2f80ed;color:#fff}
+#home table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+#home th{text-align:left;font-size:12px;font-weight:600;color:#8a929c;padding:12px 16px;border-bottom:1px solid #e9ecef;cursor:pointer;white-space:nowrap}
+#home th.on{color:#2f80ed}
+#home td{padding:14px 16px;border-bottom:1px solid #f0f2f4;font-size:15px}
+#home tr:last-child td{border-bottom:0}
+#home tbody tr{cursor:pointer}
+#home tbody tr:hover{background:#f6f9fe}
+#home td.n{font-weight:600;word-break:break-all}
+#home td.m{color:#666;font-size:13px;white-space:nowrap;width:150px}
+#home td.a{width:96px;white-space:nowrap;text-align:right}
+#home td.a button{border:0;background:transparent;color:#9aa1a9;cursor:pointer;font-size:13px;padding:6px 8px;border-radius:6px}
+#home td.a button:hover{background:#eef1f5;color:#333}
+#home td.a button.del:hover{background:#fde8e6;color:#e74c3c}
+#home td input{font:inherit;font-weight:600;font-size:15px;width:100%;padding:6px 8px;border:2px solid #2f80ed;border-radius:6px;outline:0}
+#home .empty{text-align:center;color:#8a929c;padding:40px;font-size:14px}
+#home .acc{font-size:12px;color:#8a929c;margin-top:16px;text-align:right}
+#cover{position:fixed;inset:0;background:#f4f5f7;z-index:40;display:flex;align-items:center;justify-content:center}
+#cover.hide{display:none}
+#cover .box{display:flex;flex-direction:column;gap:12px;align-items:stretch;width:320px}
+#cover .msg{text-align:center}
+#cover a.btn{text-decoration:none;text-align:center}
+#cover .btn{background:#0061fe;color:#fff;border:0;font:inherit;font-weight:700;font-size:16px;padding:14px 28px;border-radius:10px;cursor:pointer}
+#cover .btn.sub{background:#34495e}
+#cover input{font:inherit;font-size:15px;padding:12px;border:1px solid #cfd5dc;border-radius:8px}
+#cover .msg{font-size:15px;color:#555}
+</style>
 </head>
 <body>
-<iframe id="app" src="https://script.google.com/macros/s/AKfycbwkxgDLJEFc3Paqvb7VwD4ZHxfi8pm10SCLJ0qWar5XUe_VPe8QAB7Vt6UqlZHdILlu/exec" allow="clipboard-read; clipboard-write"></iframe>
-<script>document.getElementById('app').addEventListener('load',e=>e.target.focus())</script>
+<div id="stage"><div id="world"><svg id="links"></svg></div></div>
+
+<div id="tools" class="bar">
+<span class="brand">N-Mind</span>
+<button id="bHome" title="マップ一覧へ">一覧</button>
+<button id="bPng" title="画像で書き出し (.png)">画像</button>
+<button id="bJson" title="JSON で書き出し">JSON</button>
+<div class="sep"></div>
+<button id="bUndo" title="元に戻す (Ctrl+Z)">↶</button>
+<button id="bRedo" title="やり直し (Ctrl+Y)">↷</button>
+<div class="sep"></div>
+<button id="bChild" title="子トピック (Tab)">＋子</button>
+<button id="bSib" title="兄弟トピック (Enter)">＋兄弟</button>
+<button id="bDel" title="削除 (Delete)">削除</button>
+<span id="status"></span>
+</div>
+<div id="home"><div class="wrap">
+<div class="head"><span class="logo">N-Mind</span><button class="hb" id="hImport">JSON を読み込む</button><button class="hb pri" id="hNew">＋ 新しいマップ</button></div>
+<table><thead><tr><th data-k="title">名前</th><th data-k="modified">最終更新</th><th></th></tr></thead><tbody id="hList"></tbody></table>
+<div class="acc" id="hAcc"></div>
+</div></div>
+<div id="cover"><span class="msg">読み込み中…</span></div>
+
+<div id="palette" class="bar"></div>
+
+<div id="zoom" class="bar">
+<button id="zOut" title="縮小">−</button><span id="zPct">100%</span><button id="zIn" title="拡大">＋</button>
+<div class="sep"></div>
+<button id="zFit" title="全体を表示">全体</button>
+</div>
+
+<input type="file" id="file" accept=".json,application/json" hidden>
+
+<script>
+const PALETTE=['#e74c3c','#f2994a','#f2c94c','#27ae60','#16a085','#2f80ed','#56ccf2','#9b51e0','#e84393','#8d6e63','#34495e','#bdbdbd'];
+const LINE='#c4cad1';
+const $=s=>document.querySelector(s);
+const stage=$('#stage'),world=$('#world'),svg=$('#links');
+
+let view={x:innerWidth/2,y:innerHeight/2,s:1};
+let map=newMap();
+let selId=map.id;
+let undoStack=[],redoStack=[];
+let els={},info={},vis=[];
+let editing=null,clip=null,drag=null;
+
+function uid(){return Math.random().toString(36).slice(2,10)}
+function newMap(){return{id:uid(),text:'中心テーマ',color:'#34495e',children:[]}}
+function snapshot(){undoStack.push(JSON.stringify(map));if(undoStack.length>200)undoStack.shift();redoStack=[]}
+function undo(){if(!undoStack.length)return;redoStack.push(JSON.stringify(map));map=JSON.parse(undoStack.pop());fixSel();render()}
+function redo(){if(!redoStack.length)return;undoStack.push(JSON.stringify(map));map=JSON.parse(redoStack.pop());fixSel();render()}
+function walk(n,fn,p=null,d=0){fn(n,p,d);n.children.forEach(c=>walk(c,fn,n,d+1))}
+function find(id){let r=null;walk(map,n=>{if(n.id===id)r=n});return r}
+function parentOf(id){let r=null;walk(map,(n,p)=>{if(n.id===id)r=p});return r}
+function contains(a,b){let r=false;walk(a,n=>{if(n===b)r=true});return r}
+function fixSel(){if(!find(selId))selId=map.id;let n=find(selId),p;while((p=parentOf(n.id))){if(p.collapsed&&p!==map)selId=p.id;n=p}}
+function fg(hex){const n=parseInt(hex.slice(1),16),r=n>>16&255,g=n>>8&255,b=n&255;return(.299*r+.587*g+.114*b)>170?'#222':'#fff'}
+function nextColor(){const used=map.children.map(c=>c.color);let best=PALETTE[0],cnt=1e9;for(const c of PALETTE.slice(0,10)){const k=used.filter(u=>u===c).length;if(k<cnt){cnt=k;best=c}}return best}
+function kids(i){return i.n.collapsed&&i.d>0?[]:i.n.children.map(c=>info[c.id])}
+
+function render(){
+  world.querySelectorAll('.node').forEach(e=>e.remove());
+  els={};info={};vis=[];
+  (function rec(n,p,d,dir,pc){
+    const c=n.color||pc;const i={n,p,d,dir,c};info[n.id]=i;vis.push(i);
+    if(n.collapsed&&d>0)return;
+    n.children.forEach(ch=>rec(ch,n,d+1,d===0?(ch.side==='L'?-1:1):dir,c));
+  })(map,null,0,1,map.color||'#34495e');
+  for(const i of vis){
+    const e=document.createElement('div');
+    i.f=i.d<2||!!i.n.color;e.className='node'+(i.d===0?' root':i.d===1?' l1':'')+(i.f?' filled':'')+(i.n.id===selId?' sel':'');
+    e.textContent=wrap40(i.n.text);e.dataset.id=i.n.id;
+    e.style.setProperty('--c',i.c);e.style.setProperty('--fg',fg(i.c));
+    world.appendChild(e);els[i.n.id]=e;
+  }
+  layout();updatePalette();save();
+}
+
+function layout(){
+  for(const i of vis){const e=els[i.n.id];i.w=e.offsetWidth;i.h=e.offsetHeight;i._sh=null}
+  const vg=d=>d===1?24:10;
+  const sh=i=>{if(i._sh!=null)return i._sh;let t=0;kids(i).forEach((c,j)=>t+=sh(c)+(j?vg(c.d):0));return i._sh=Math.max(i.h,t)};
+  const place=(list,dir,p)=>{
+    let total=0;list.forEach((c,j)=>total+=sh(c)+(j?vg(c.d):0));
+    let y=p.y+p.h/2-total/2;
+    for(const c of list){const h=sh(c),hg=c.d===1?64:36;
+      c.x=dir>0?p.x+p.w+hg:p.x-hg-c.w;c.y=y+h/2-c.h/2;place(kids(c),dir,c);y+=h+vg(c.d)}
+  };
+  const r=info[map.id];r.x=-r.w/2;r.y=-r.h/2;
+  const ks=kids(r);place(ks.filter(c=>c.dir>0),1,r);place(ks.filter(c=>c.dir<0),-1,r);
+  world.querySelectorAll('.tog').forEach(e=>e.remove());
+  let paths='';
+  for(const i of vis){
+    const e=els[i.n.id];e.style.left=i.x+'px';e.style.top=i.y+'px';
+    if(i.p){const p=info[i.p.id],x1=i.dir>0?p.x+p.w:p.x,y1=p.y+p.h/2,x2=i.dir>0?i.x:i.x+i.w,y2=i.y+i.h/2,mx=(x1+x2)/2;
+      paths+=`<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke="${LINE}" stroke-width="${i.d===1?4:2}" fill="none" stroke-linecap="round"/>`}
+    if(i.d>0&&i.n.children.length&&(i.n.collapsed||i.n.id===selId)){
+      const t=document.createElement('div');t.className='tog';t.dataset.tog=i.n.id;
+      t.textContent=i.n.collapsed?countAll(i.n):'−';t.style.setProperty('--c',i.c);
+      world.appendChild(t);
+      t.style.left=(i.dir>0?i.x+i.w+6:i.x-6-t.offsetWidth)+'px';t.style.top=(i.y+i.h/2-9)+'px';
+    }
+  }
+  svg.innerHTML=paths;
+}
+// 1行40文字（全角1・半角0.5で数える）を超えたら折り返す。英単語はなるべく空白で切る
+function half(c){return /[ -~｡-ﾟ]/.test(c)}
+function wrap40(text){
+  return text.split('\n').map(line=>{
+    const out=[];let cur='',w=0,sp=-1;
+    for(const ch of line){
+      const cw=half(ch)?.5:1;
+      if(w+cw>40&&cur){
+        if(sp>0&&cw===.5&&ch!==' '){out.push(cur.slice(0,sp));cur=cur.slice(sp+1);w=[...cur].reduce((a,c)=>a+(half(c)?.5:1),0)}
+        else{out.push(cur);cur='';w=0}
+        sp=-1;
+      }
+      if(ch===' ')sp=cur.length;
+      cur+=ch;w+=cw;
+    }
+    out.push(cur);return out.join('\n');
+  }).join('\n');
+}
+function countAll(n){let k=-1;walk(n,()=>k++);return k}
+
+function applyView(){
+  world.style.transform=`translate(${view.x}px,${view.y}px) scale(${view.s})`;
+  stage.style.backgroundSize=`${24*view.s}px ${24*view.s}px`;
+  stage.style.backgroundPosition=`${view.x}px ${view.y}px`;
+  $('#zPct').textContent=Math.round(view.s*100)+'%';
+}
+function zoomAt(cx,cy,f){const s=Math.min(3,Math.max(.15,view.s*f)),k=s/view.s;view.x=cx-(cx-view.x)*k;view.y=cy-(cy-view.y)*k;view.s=s;applyView()}
+function bounds(){let a=1e9,b=1e9,c=-1e9,d=-1e9;for(const i of vis){a=Math.min(a,i.x);b=Math.min(b,i.y);c=Math.max(c,i.x+i.w);d=Math.max(d,i.y+i.h)}return{x:a,y:b,w:c-a,h:d-b}}
+function fit(){const B=bounds(),W=innerWidth,H=innerHeight-120;view.s=Math.min(1.5,Math.max(.15,Math.min((W-80)/B.w,(H-40)/B.h)));
+  view.x=W/2-(B.x+B.w/2)*view.s;view.y=60+H/2-(B.y+B.h/2)*view.s;applyView()}
+function ensureVisible(id){const e=els[id];if(!e)return;const r=e.getBoundingClientRect(),m=80;
+  let dx=0,dy=0;if(r.left<m)dx=m-r.left;else if(r.right>innerWidth-m)dx=innerWidth-m-r.right;
+  if(r.top<m)dy=m-r.top;else if(r.bottom>innerHeight-m)dy=innerHeight-m-r.bottom;
+  if(dx||dy){view.x+=dx;view.y+=dy;applyView()}}
+
+function select(id){
+  if(!info[id])return;selId=id;
+  for(const k in els)els[k].classList.toggle('sel',k===id);
+  layout();updatePalette();ensureVisible(id);
+}
+
+function addChild(){
+  const i=info[selId];if(!i)return;const p=i.n;snapshot();p.collapsed=false;
+  const n={id:uid(),text:'',children:[]};
+  if(i.d===0){const r=p.children.filter(c=>c.side!=='L').length;n.side=r<=p.children.length-r?'R':'L';n.color=nextColor()}
+  p.children.push(n);selId=n.id;render();ensureVisible(n.id);startEdit(n.id,{isNew:true});
+}
+function addSibling(){
+  const i=info[selId];if(!i)return;if(i.d===0)return addChild();
+  snapshot();const p=i.p,n={id:uid(),text:'',children:[]};
+  if(i.d===1){n.side=i.n.side;n.color=nextColor()}
+  p.children.splice(p.children.indexOf(i.n)+1,0,n);selId=n.id;render();ensureVisible(n.id);startEdit(n.id,{isNew:true});
+}
+function del(){
+  const i=info[selId];if(!i||i.d===0)return;snapshot();
+  const sib=i.p.children,k=sib.indexOf(i.n);sib.splice(k,1);
+  selId=(sib[k]||sib[k-1]||i.p).id;render();
+}
+function toggle(id){const n=find(id);if(!n||!n.children.length||n===map)return;snapshot();n.collapsed=!n.collapsed;fixSel();render()}
+function moveSibling(dir){
+  const i=info[selId];if(!i||i.d===0)return;const sib=i.p.children,k=sib.indexOf(i.n);
+  let j=k+dir;if(i.d===1){while(sib[j]&&(sib[j].side==='L')!==(i.n.side==='L'))j+=dir}
+  if(!sib[j])return;snapshot();sib.splice(k,1);sib.splice(j,0,i.n);render();
+}
+function setColor(c){const i=info[selId];if(!i)return;snapshot();i.n.color=c;render()}
+function cloneNew(n){return{...n,id:uid(),children:n.children.map(cloneNew)}}
+function copy(cut){const i=info[selId];if(!i)return;clip=JSON.stringify(i.n);if(cut&&i.d>0)del()}
+function paste(){
+  if(!clip)return;const i=info[selId];if(!i)return;snapshot();const n=cloneNew(JSON.parse(clip));
+  if(i.d===0){const r=i.n.children.filter(c=>c.side!=='L').length;n.side=r<=i.n.children.length-r?'R':'L';if(!n.color)n.color=nextColor()}
+  i.n.collapsed=false;i.n.children.push(n);selId=n.id;render();ensureVisible(n.id);
+}
+
+function startEdit(id,{replace=false,isNew=false}={}){
+  const e=els[id];if(!e)return;
+  editing={id,orig:isNew?'':find(id).text,isNew};
+  e.contentEditable='true';e.textContent=replace?'':find(id).text;layout();e.focus();
+  const sel=getSelection(),r=document.createRange();r.selectNodeContents(e);if(replace)r.collapse(false);
+  sel.removeAllRanges();sel.addRange(r);
+  e.oninput=()=>layout();
+  e.onpaste=ev=>{ev.preventDefault();document.execCommand('insertText',false,ev.clipboardData.getData('text/plain'))};
+  e.onblur=()=>commit();
+  e.onkeydown=ev=>{
+    ev.stopPropagation();if(ev.isComposing||ev.keyCode===229)return;
+    if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();commit()}
+    else if(ev.key==='Escape'){ev.preventDefault();commit(true)}
+    else if(ev.key==='Tab'){ev.preventDefault();commit();addChild()}
+  };
+}
+function commit(cancel=false){
+  if(!editing)return;const{id,orig,isNew}=editing;editing=null;
+  const e=els[id];e.contentEditable='false';e.onblur=null;
+  const t=cancel?orig:e.innerText.replace(/ /g,' ').trim();const n=find(id);
+  if(!t){if(isNew){undoStack.pop();const p=parentOf(id);p.children.splice(p.children.indexOf(n),1);selId=p.id}}
+  else if(t!==orig){if(!isNew)snapshot();n.text=t}
+  getSelection().removeAllRanges();render();
+}
+
+function nav(key){
+  const i=info[selId];if(!i)return;const cx=i.x+i.w/2,cy=i.y+i.h/2;
+  if(key==='ArrowLeft'||key==='ArrowRight'){
+    const want=key==='ArrowRight'?1:-1;let list=[];
+    if(i.d===0)list=kids(i).filter(c=>c.dir===want);
+    else if(i.dir===want){if(i.n.collapsed){toggle(i.n.id);return}list=kids(i)}
+    else return select(i.p.id);
+    if(list.length){list.sort((a,b)=>Math.abs(a.y+a.h/2-cy)-Math.abs(b.y+b.h/2-cy));select(list[0].n.id)}
+    return;
+  }
+  const up=key==='ArrowUp';let best=null,score=1e9;
+  for(const o of vis){if(o===i||o.d===0||(i.d>0&&o.dir!==i.dir))continue;
+    const oy=o.y+o.h/2,dy=up?cy-oy:oy-cy;if(dy<=1)continue;
+    const s=dy+3*Math.abs(o.x+o.w/2-cx)+(o.d===i.d?0:200);if(s<score){score=s;best=o}}
+  if(best)select(best.n.id);
+}
+
+document.addEventListener('keydown',ev=>{
+  if(editing||ev.target.tagName==='INPUT'||!$('#cover').classList.contains('hide')||$('#home').classList.contains('open'))return;
+  const k=ev.key,ctrl=ev.ctrlKey||ev.metaKey;
+  if(ctrl&&(k==='z'||k==='Z')){ev.preventDefault();ev.shiftKey?redo():undo();return}
+  if(ctrl&&(k==='y'||k==='Y')){ev.preventDefault();redo();return}
+  if(ctrl&&k==='c'){copy(false);return}
+  if(ctrl&&k==='x'){copy(true);return}
+  if(ctrl&&k==='v'){ev.preventDefault();paste();return}
+  if(ctrl&&k==='s'){ev.preventDefault();flush();return}
+  if(ctrl&&(k==='='||k==='+'||k===';')){ev.preventDefault();zoomAt(innerWidth/2,innerHeight/2,1.2);return}
+  if(ctrl&&k==='-'){ev.preventDefault();zoomAt(innerWidth/2,innerHeight/2,1/1.2);return}
+  if(ctrl&&k==='0'){ev.preventDefault();fit();return}
+  if(ev.altKey&&(k==='ArrowUp'||k==='ArrowDown')){ev.preventDefault();moveSibling(k==='ArrowUp'?-1:1);return}
+  if(k==='Tab'||k==='Insert'){ev.preventDefault();addChild();return}
+  if(k==='Enter'){ev.preventDefault();addSibling();return}
+  if(k==='Delete'||k==='Backspace'){ev.preventDefault();del();return}
+  if(k==='F2'||k===' '){ev.preventDefault();startEdit(selId);return}
+  if(k.startsWith('Arrow')){ev.preventDefault();nav(k);return}
+  if(k==='Escape'){return}
+  if(!ctrl&&!ev.altKey&&(k.length===1||k==='Process'))startEdit(selId,{replace:true});
+});
+
+function toWorld(x,y){return{x:(x-view.x)/view.s,y:(y-view.y)/view.s}}
+function clearDrop(){world.querySelectorAll('.drop,.drop-before,.drop-after').forEach(e=>e.classList.remove('drop','drop-before','drop-after'))}
+function dropTarget(ev){
+  const el=document.elementFromPoint(ev.clientX,ev.clientY);const ne=el&&el.closest&&el.closest('.node');
+  if(!ne)return null;const t=find(ne.dataset.id),n=find(drag.id);if(!t||contains(n,t))return null;
+  const r=ne.getBoundingClientRect(),rel=(ev.clientY-r.top)/r.height;
+  const mode=t===map?'child':rel<.25?'before':rel>.75?'after':'child';
+  return{el:ne,t,mode};
+}
+stage.addEventListener('pointerdown',ev=>{
+  if(ev.button!==0&&ev.button!==1)return;
+  const tg=ev.target.closest('.tog');if(tg){toggle(tg.dataset.tog);return}
+  const ne=ev.target.closest('.node');
+  if(ne&&ne.isContentEditable)return;
+  if(editing)commit();
+  if(ne&&ev.button===0){const id=ne.dataset.id;select(id);drag={type:'node',id,sx:ev.clientX,sy:ev.clientY,moved:false}}
+  else{drag={type:'pan',sx:ev.clientX,sy:ev.clientY,vx:view.x,vy:view.y};stage.classList.add('panning')}
+});
+addEventListener('pointermove',ev=>{
+  if(!drag)return;const dx=ev.clientX-drag.sx,dy=ev.clientY-drag.sy;
+  if(drag.type==='pan'){view.x=drag.vx+dx;view.y=drag.vy+dy;applyView();return}
+  if(drag.id===map.id)return;
+  if(!drag.moved&&Math.hypot(dx,dy)<5)return;
+  drag.moved=true;const e=els[drag.id];e.classList.add('dragging');e.style.transform=`translate(${dx/view.s}px,${dy/view.s}px)`;
+  clearDrop();const d=dropTarget(ev);if(d)d.el.classList.add(d.mode==='child'?'drop':'drop-'+d.mode);
+});
+addEventListener('pointerup',ev=>{
+  if(!drag)return;const g=drag;drag=null;stage.classList.remove('panning');clearDrop();
+  if(g.type!=='node'||!g.moved)return;
+  drag=g;const d=dropTarget(ev);drag=null;
+  const n=find(g.id),from=parentOf(g.id),wasL1=from===map;
+  if(d){
+    snapshot();from.children.splice(from.children.indexOf(n),1);
+    if(d.mode==='child'){
+      if(d.t===map){n.side=toWorld(ev.clientX,ev.clientY).x<0?'L':'R';if(!n.color)n.color=nextColor()}
+      d.t.collapsed=false;d.t.children.push(n);
+    }else{
+      const p=parentOf(d.t.id);if(p===map){n.side=d.t.side;if(!n.color)n.color=nextColor()}
+      p.children.splice(p.children.indexOf(d.t)+(d.mode==='after'?1:0),0,n);
+    }
+    if(wasL1&&d.mode==='child'&&d.t!==map)delete n.side;
+  }else if(wasL1){
+    const side=toWorld(ev.clientX,ev.clientY).x<0?'L':'R';if(side!==(n.side||'R')){snapshot();n.side=side}
+  }
+  render();
+});
+stage.addEventListener('dblclick',ev=>{const ne=ev.target.closest('.node');if(ne&&!ne.isContentEditable)startEdit(ne.dataset.id)});
+stage.addEventListener('wheel',ev=>{ev.preventDefault();zoomAt(ev.clientX,ev.clientY,Math.exp(-ev.deltaY*.0015))},{passive:false});
+
+function updatePalette(){const i=info[selId];const c=i?i.c:'';document.querySelectorAll('.sw[data-c]').forEach(s=>s.classList.toggle('on',s.dataset.c===c))}
+(function buildPalette(){
+  const pal=$('#palette');
+  for(const c of PALETTE){const b=document.createElement('button');b.className='sw';b.style.background=c;b.dataset.c=c;b.title=c;b.onclick=()=>setColor(c);pal.appendChild(b)}
+  const cu=document.createElement('label');cu.className='sw';cu.id='custom';cu.title='その他の色';
+  const inp=document.createElement('input');inp.type='color';inp.onchange=()=>setColor(inp.value);cu.appendChild(inp);pal.appendChild(cu);
+  pal.addEventListener('pointerdown',ev=>{if(editing)commit()});
+})();
+
+function download(name,url){const a=document.createElement('a');a.href=url;a.download=name;a.click()}
+function fileName(ext){return(map.text||'mindmap').replace(/[\\/:*?"<>|\n]/g,'_').slice(0,40)+ext}
+function saveFile(){download(fileName('.json'),URL.createObjectURL(new Blob([JSON.stringify(map,null,1)],{type:'application/json'})))}
+function exportPng(){
+  const B=bounds(),pad=40,sc=2,cv=document.createElement('canvas');
+  cv.width=(B.w+pad*2)*sc;cv.height=(B.h+pad*2)*sc;const ctx=cv.getContext('2d');
+  ctx.scale(sc,sc);ctx.translate(pad-B.x,pad-B.y);ctx.fillStyle='#fff';ctx.fillRect(B.x-pad,B.y-pad,B.w+pad*2,B.h+pad*2);
+  ctx.lineCap='round';
+  for(const i of vis){if(!i.p)continue;const p=info[i.p.id],x1=i.dir>0?p.x+p.w:p.x,y1=p.y+p.h/2,x2=i.dir>0?i.x:i.x+i.w,y2=i.y+i.h/2,mx=(x1+x2)/2;
+    ctx.strokeStyle=LINE;ctx.lineWidth=i.d===1?4:2;ctx.beginPath();ctx.moveTo(x1,y1);ctx.bezierCurveTo(mx,y1,mx,y2,x2,y2);ctx.stroke()}
+  for(const i of vis){
+    const cs=getComputedStyle(els[i.n.id]),rad=parseFloat(cs.borderTopLeftRadius),pl=parseFloat(cs.paddingLeft),pt=parseFloat(cs.paddingTop),bw=parseFloat(cs.borderTopWidth),lh=parseFloat(cs.lineHeight);
+    ctx.beginPath();ctx.roundRect(i.x+1,i.y+1,i.w-2,i.h-2,rad);ctx.fillStyle=i.f?i.c:'#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=i.f?i.c:'#cfd4da';ctx.stroke();
+    ctx.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;ctx.fillStyle=i.f?fg(i.c):'#222';ctx.textBaseline='middle';
+    const maxW=i.w-2*(pl+bw)+1,lines=[];
+    for(const para of els[i.n.id].textContent.split('\n')){let cur='';for(const ch of para){if(cur&&ctx.measureText(cur+ch).width>maxW){lines.push(cur);cur=ch}else cur+=ch}lines.push(cur)}
+    lines.forEach((l,k)=>ctx.fillText(l,i.x+bw+pl,i.y+bw+pt+lh*k+lh/2));
+  }
+  download(fileName('.png'),cv.toDataURL('image/png'));
+}
+
+$('#bPng').onclick=exportPng;
+$('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
+$('#bChild').onclick=addChild;$('#bSib').onclick=addSibling;$('#bDel').onclick=del;
+$('#zIn').onclick=()=>zoomAt(innerWidth/2,innerHeight/2,1.2);
+$('#zOut').onclick=()=>zoomAt(innerWidth/2,innerHeight/2,1/1.2);
+$('#zFit').onclick=fit;
+document.querySelectorAll('.bar').forEach(b=>b.addEventListener('mousedown',ev=>{if(ev.target.tagName==='BUTTON'){ev.preventDefault();if(editing)commit()}}));
+
+// ---------- Dropbox への保存 ----------
+let maps=[],saveTimer=null,saving=false,dirty=false,lastSaved='',state={};
+function setStatus(t,err){const s=$('#status');s.textContent=t;s.classList.toggle('err',!!err)}
+// ---------- 保存先の切り替え ----------
+// Apps Script（オンライン版）では Google 経由で Dropbox へ、
+// GitHub の入口（オフライン版）では PC の Dropbox フォルダを直接読み書きする
+const GAS=!!(window.google&&google.script&&google.script.run);
+const ONLINE_URL='https://script.google.com/macros/s/AKfycbwkxgDLJEFc3Paqvb7VwD4ZHxfi8pm10SCLJ0qWar5XUe_VPe8QAB7Vt6UqlZHdILlu/exec';
+let dir=null;
+const known={}; // id → 最後に読んだ／書いたときのファイル時刻（別の端末の更新を見分ける）
+function idb(){return new Promise((ok,ng)=>{const r=indexedDB.open('nmind',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)})}
+async function kv(key,val){const db=await idb();return new Promise((ok,ng)=>{const t=db.transaction('kv',val===undefined?'readonly':'readwrite'),st=t.objectStore('kv');const r=val===undefined?st.get(key):st.put(val,key);r.onsuccess=()=>ok(r.result);r.onerror=()=>ng(r.error)})}
+function mapFile(title,id){const t=String(title||'').trim().replace(/[\\\/:*?"<>|\u0000-\u001f]+/g,'_').slice(0,60);return(t||'マップ')+'_'+id+'.json'}
+function needDir(){if(!dir)throw new Error('folder')}
+async function entries(){
+  const out=[];
+  for await(const[name,h]of dir.entries()){
+    const m=h.kind==='file'&&name.match(/^(.*)_([a-z0-9]{6,20})\.json$/);
+    if(m){const f=await h.getFile();out.push({id:m[2],title:m[1],name,modified:new Date(f.lastModified).toISOString(),f})}
+  }
+  return out;
+}
+async function writeFile(name,text){const h=await dir.getFileHandle(name,{create:true}),w=await h.createWritable();await w.write(text);await w.close();return(await h.getFile()).lastModified}
+const Local={
+  async getState(){
+    if(!('showDirectoryPicker' in window))return{dropbox:null,unsupported:true};
+    dir=(await kv('dir').catch(()=>null))||null;
+    if(dir&&await dir.queryPermission({mode:'readwrite'})!=='granted')return{dropbox:null,needGrant:true};
+    return{dropbox:dir?'PC':null};
+  },
+  async listMaps(){needDir();return(await entries()).map(({id,title,name,modified})=>({id,title,name,modified}))},
+  async loadMap(id){needDir();const e=(await entries()).find(x=>x.id===id);if(!e)throw new Error('notfound');known[id]=e.f.lastModified;return e.f.text()},
+  async saveMap(id,json){
+    needDir();const data=JSON.parse(json),name=mapFile(data.text,id);
+    const old=(await entries()).find(x=>x.id===id);
+    // 開いている間に別の端末で書き換えられていたら、向こうの版を別のマップとして残してから上書きする
+    if(old&&known[id]&&old.f.lastModified>known[id]+1000){
+      const theirs=JSON.parse(await old.f.text());theirs.id=uid();theirs.text=(theirs.text||'')+'（別の端末の版）';
+      await writeFile(mapFile(theirs.text,theirs.id),JSON.stringify(theirs,null,1));
+    }
+    known[id]=await writeFile(name,JSON.stringify(data,null,1));
+    if(old&&old.name!==name)await dir.removeEntry(old.name);
+    return true;
+  },
+  async deleteMap(id){needDir();const e=(await entries()).find(x=>x.id===id);if(e)await dir.removeEntry(e.name);return true},
+  async renameMap(id,title){const d=JSON.parse(await Local.loadMap(id));d.text=title;return Local.saveMap(id,JSON.stringify(d))},
+};
+function call(fn,...args){
+  if(!GAS)return Local[fn](...args).catch(e=>{if(e&&e.message==='folder')showConnect();throw e});
+  return new Promise((ok,ng)=>google.script.run.withSuccessHandler(ok).withFailureHandler(e=>{
+    const m=String(e&&e.message||e);if(/\bdropbox\b|nokey/.test(m))showConnect();ng(new Error(m))})[fn](...args));
+}
+function save(){
+  if(JSON.stringify(map)===lastSaved)return;
+  dirty=true;setStatus('保存中…');clearTimeout(saveTimer);saveTimer=setTimeout(flush,1200);
+}
+async function flush(){
+  clearTimeout(saveTimer);
+  if(saving){saveTimer=setTimeout(flush,500);return}
+  const s=JSON.stringify(map);if(s===lastSaved){dirty=false;setStatus('保存済み');return}
+  saving=true;
+  try{await call('saveMap',map.id,s);lastSaved=s;
+    dirty=JSON.stringify(map)!==lastSaved;setStatus(dirty?'保存中…':'保存済み');if(dirty)saveTimer=setTimeout(flush,500)}
+  catch(e){setStatus('保存できませんでした',true);saveTimer=setTimeout(flush,5000)}
+  finally{saving=false}
+}
+addEventListener('beforeunload',ev=>{if(dirty){flush();ev.preventDefault();ev.returnValue=''}});
+async function openMap(m,isNew){
+  if(dirty)await flush();
+  map=m;selId=map.id;undoStack=[];redoStack=[];lastSaved=isNew?'':JSON.stringify(map);
+  $('#home').classList.remove('open');
+  try{sessionStorage.setItem(OPEN,map.id)}catch(e){}
+  render();view={x:innerWidth/2,y:innerHeight/2,s:1};applyView();if(map.children.length)fit();
+  if(isNew){flush();startEdit(map.id)}else setStatus('保存済み');
+}
+// 開いているマップの id だけをタブに覚えておき、F5 でも同じマップに戻る（中身はブラウザに残さない）
+const OPEN='nmind.open';
+async function loadMap(id,quiet){try{await openMap(JSON.parse(await call('loadMap',id)),false);return true}catch(e){if(!quiet)alert('開けませんでした');return false}}
+
+// ---------- ホーム（マップ一覧） ----------
+let sortKey='modified',sortAsc=false;
+function fmtDate(iso){const d=new Date(iso),z=n=>String(n).padStart(2,'0');return`${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`}
+async function showHome(){
+  if(editing)commit();
+  if(dirty)await flush();
+  try{sessionStorage.removeItem(OPEN)}catch(e){}
+  $('#home').classList.add('open');$('#cover').classList.add('hide');
+  $('#hAcc').textContent=GAS?'Dropbox：'+(state.dropbox||''):'保存先：PC の Dropbox';
+  const tb=$('#hList');if(!maps.length)tb.innerHTML='<tr><td colspan="3" class="empty">読み込み中…</td></tr>';
+  try{maps=await call('listMaps')}catch(e){tb.innerHTML='<tr><td colspan="3" class="empty">一覧を読めませんでした</td></tr>';return}
+  drawHome();
+}
+function drawHome(){
+  document.querySelectorAll('#home th[data-k]').forEach(th=>{th.classList.toggle('on',th.dataset.k===sortKey);th.textContent=(th.dataset.k==='title'?'名前':'最終更新')+(th.dataset.k===sortKey?(sortAsc?' ▲':' ▼'):'')});
+  const list=maps.slice().sort((a,b)=>{const r=sortKey==='title'?a.title.localeCompare(b.title,'ja'):a.modified.localeCompare(b.modified);return sortAsc?r:-r});
+  const tb=$('#hList');tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="3" class="empty">マップはまだありません</td></tr>';return}
+  for(const m of list){
+    const tr=el('tr'),n=el('td',{className:'n',textContent:m.title}),d=el('td',{className:'m',textContent:fmtDate(m.modified)}),a=el('td',{className:'a'});
+    const rn=el('button',{textContent:'名前変更'}),del=el('button',{className:'del',textContent:'削除'});
+    rn.onclick=ev=>{ev.stopPropagation();renameRow(m,n)};
+    del.onclick=ev=>{ev.stopPropagation();deleteMap(m)};
+    a.append(rn,del);tr.append(n,d,a);tr.onclick=()=>{if(!n.querySelector('input'))loadMap(m.id)};tb.appendChild(tr);
+  }
+}
+function renameRow(m,td){
+  const inp=el('input',{value:m.title});td.textContent='';td.appendChild(inp);inp.focus();inp.select();
+  let done=false;
+  const finish=async ok=>{
+    if(done)return;done=true;const v=inp.value.trim();
+    if(!ok||!v||v===m.title){td.textContent=m.title;return}
+    td.textContent=v;
+    try{await call('renameMap',m.id,v);maps=await call('listMaps');drawHome()}catch(e){td.textContent=m.title;alert('名前を変えられませんでした')}
+  };
+  inp.onkeydown=ev=>{ev.stopPropagation();if(ev.isComposing||ev.keyCode===229)return;if(ev.key==='Enter')finish(true);else if(ev.key==='Escape')finish(false)};
+  inp.onblur=()=>finish(true);inp.onclick=ev=>ev.stopPropagation();
+}
+async function deleteMap(m){
+  if(!confirm('「'+m.title+'」を削除しますか？（Dropbox の削除済みファイルから戻せます）'))return;
+  try{await call('deleteMap',m.id)}catch(e){alert('削除できませんでした');return}
+  maps=maps.filter(x=>x.id!==m.id);drawHome();
+}
+document.querySelectorAll('#home th[data-k]').forEach(th=>th.onclick=()=>{if(sortKey===th.dataset.k)sortAsc=!sortAsc;else{sortKey=th.dataset.k;sortAsc=sortKey==='title'}drawHome()});
+$('#hNew').onclick=()=>openMap(newMap(),true);
+$('#hImport').onclick=()=>$('#file').click();
+$('#bHome').onclick=showHome;
+$('#bJson').onclick=saveFile;
+$('#file').onchange=async ev=>{const f=ev.target.files[0];ev.target.value='';if(!f)return;
+  try{const m=JSON.parse(await f.text());if(typeof m.text!=='string'||!Array.isArray(m.children))throw 0;
+    const fix=n=>{n.id=uid();n.children=(n.children||[]).map(fix);return n};openMap(fix(m),true)}catch(e){alert('読み込めませんでした')}};
+function el(tag,props){return Object.assign(document.createElement(tag),props)}
+async function showFolder(){
+  const c=$('#cover');c.classList.remove('hide');c.innerHTML='';const box=el('div',{className:'box'});c.appendChild(box);
+  if(state.unsupported){const a=el('a',{className:'btn',href:ONLINE_URL,textContent:'オンライン版を開く'});box.append(a);return}
+  if(state.needGrant){
+    const b=el('button',{className:'btn',textContent:'N-Mind を開く'});
+    b.onclick=async()=>{if(await dir.requestPermission({mode:'readwrite'})==='granted')boot()};
+    box.append(b);return;
+  }
+  const b=el('button',{className:'btn',textContent:'保存フォルダを選ぶ'});
+  const msg=el('span',{className:'msg',textContent:'Dropbox\\アプリ\\N-Mind\\maps'});
+  b.onclick=async()=>{
+    let h;try{h=await showDirectoryPicker({id:'nmind',mode:'readwrite'})}catch(e){return}
+    if(h.name==='N-Mind')h=await h.getDirectoryHandle('maps',{create:true});
+    else if(h.name!=='maps'){msg.style.color='#e74c3c';return}
+    await kv('dir',h);boot();
+  };
+  box.append(b,msg);
+}
+async function showConnect(){
+  if(!GAS)return showFolder();
+  const c=$('#cover');c.classList.remove('hide');c.innerHTML='';const box=el('div',{className:'box'});c.appendChild(box);
+  if(!state.hasKey){
+    const k=el('input',{placeholder:'Dropbox の App key'});
+    const b=el('button',{className:'btn sub',textContent:'登録'});
+    b.onclick=async()=>{b.disabled=true;try{state=await call('setAppKey',k.value);showConnect()}catch(e){b.disabled=false;k.value='';k.placeholder='App key が違います'}};
+    box.append(k,b);return;
+  }
+  const open=el('button',{className:'btn',textContent:'Dropbox をつなぐ'});
+  const code=el('input',{placeholder:'Dropbox に出たコード'});
+  const go=el('button',{className:'btn sub',textContent:'接続'});
+  open.onclick=async()=>{open.disabled=true;try{window.open(await call('dbxAuthUrl'),'_blank')}finally{open.disabled=false}code.focus()};
+  go.onclick=async()=>{go.disabled=true;try{state=await call('dbxConnect',code.value);boot()}catch(e){go.disabled=false;code.value='';code.placeholder='つなげませんでした。もう一度'}};
+  box.append(open,code,go);
+}
+async function boot(){
+  const c=$('#cover');c.classList.remove('hide');c.innerHTML='<span class="msg">読み込み中…</span>';
+  try{state=await call('getState')}catch(e){c.innerHTML='<span class="msg">読み込めませんでした</span>';return}
+  if(!state.dropbox)return showConnect();
+  let last=null;try{last=sessionStorage.getItem(OPEN)}catch(e){}
+  if(last&&await loadMap(last,true)){$('#cover').classList.add('hide');return}
+  showHome();
+}
+if(!GAS){
+  document.head.append(el('link',{rel:'manifest',href:'manifest.webmanifest'}),el('link',{rel:'icon',href:'favicon.png'}));
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+}
+boot();
+</script>
 </body>
 </html>

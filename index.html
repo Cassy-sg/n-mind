@@ -244,11 +244,57 @@ function moveSibling(dir){
 }
 function setColor(c){const i=info[selId];if(!i)return;snapshot();i.n.color=c;render()}
 function cloneNew(n){return{...n,id:uid(),children:n.children.map(cloneNew)}}
-function copy(cut){const i=info[selId];if(!i)return;clip=JSON.stringify(i.n);if(cut&&i.d>0)del()}
-function paste(){
-  if(!clip)return;const i=info[selId];if(!i)return;snapshot();const n=cloneNew(JSON.parse(clip));
-  if(i.d===0){const r=i.n.children.filter(c=>c.side!=='L').length;n.side=r<=i.n.children.length-r?'R':'L';if(!n.color)n.color=nextColor()}
-  i.n.collapsed=false;i.n.children.push(n);selId=n.id;render();ensureVisible(n.id);
+// コピーしたトピックは下の階層ごと箇条書きの文字にしてクリップボードへも入れる（他のアプリに貼れる）
+let clipText=null;
+function outline(n,d=0){return '  '.repeat(d)+(d?'- ':'')+n.text.replace(/\n/g,' ')+n.children.map(c=>'\n'+outline(c,d+1)).join('')}
+function copy(cut){const i=info[selId];if(!i)return null;clip=JSON.stringify(i.n);clipText=outline(i.n);if(cut&&i.d>0)del();return clipText}
+function attach(nodes){
+  const i=info[selId];if(!i||!nodes.length)return;snapshot();
+  for(const n of nodes){
+    if(i.d===0){const r=i.n.children.filter(c=>c.side!=='L').length;n.side=r<=i.n.children.length-r?'R':'L';if(!n.color)n.color=nextColor()}
+    i.n.children.push(n);
+  }
+  i.n.collapsed=false;selId=nodes[0].id;render();ensureVisible(nodes[0].id);
+}
+function paste(text){
+  if(clip&&(!text||text.replace(/\r/g,'').trim()===clipText.trim()))return attach([cloneNew(JSON.parse(clip))]);
+  if(text&&text.trim())attach(parseOutline(text));
+}
+// 貼り付けた文字をトピックに分ける。箇条書き（1. ① (1) ・ - など）は1項目1ブランチ、字下げや記号の違いで下の階層へ
+const BULLETS=[
+  [/^([0-9]{1,3}|[０-９]{1,3})[.．](?![0-9０-９])\s*/,'num.'],[/^([0-9]{1,3}|[０-９]{1,3})[)）、]\s*/,'num)'],
+  [/^[(（]([0-9]{1,3}|[０-９]{1,3})[)）]\s*/,'(num)'],[/^[①-⑳㉑-㉟]\s*/,'circ'],[/^[a-zA-Z][.)]\s+/,'alpha'],
+  [/^[-*+]\s+(\[[ xX]\]\s+)?/,'-'],[/^([・•●○■□◆◇▪▫▶►▸➢✓✔★☆])\s*/,null]
+];
+function parseOutline(text){
+  const lines=text.replace(/\r\n?/g,'\n').split('\n'),items=[],order={};
+  let hasBullet=false;
+  for(const raw of lines){
+    if(!raw.trim())continue;
+    const m=raw.match(/^[ \t　]*/)[0],indent=[...m].reduce((a,c)=>a+(c==='\t'?4:c==='　'?2:1),0);
+    let s=raw.slice(m.length).trimEnd(),type=null,h=0;
+    const md=s.match(/^(#{1,6})\s+/);
+    if(md){h=md[1].length;s=s.slice(md[0].length)}
+    else for(const[re,t]of BULLETS){const b=s.match(re);if(b&&b[0].length<s.length){type=t||b[1];s=s.slice(b[0].length);break}}
+    s=s.replace(/\*\*(.+?)\*\*/g,'$1').trim();if(!s)continue;
+    if(type){hasBullet=true;const o=order[indent]||(order[indent]=[]);if(!o.includes(type))o.push(type)}
+    items.push({indent,type,h,s});
+  }
+  if(!items.length)return [];
+  // 箇条書きでも見出しでもない文章はそのまま1つのトピックにする
+  if(!hasBullet&&!items.some(x=>x.h))return [{id:uid(),text:items.map(x=>x.s).join('\n'),children:[]}];
+  const lv=x=>x.h?[0,x.h,0]:[1,x.indent,x.type?order[x.indent].indexOf(x.type)+1:0];
+  const ge=(a,b)=>{for(let k=0;k<3;k++)if(a[k]!==b[k])return a[k]>b[k];return true};
+  const top=[],stack=[];
+  for(const x of items){
+    const l=lv(x),last=stack[stack.length-1];
+    // 箇条書きの直後の地の文は、その項目の続き（同じ字下げの見出しの下にいる時は次の見出し）
+    if(!x.type&&!x.h&&last&&last.x.type&&(x.indent>last.x.indent||!stack.some(e=>!e.x.type&&!e.x.h&&e.x.indent===x.indent))){last.n.text+='\n'+x.s;continue}
+    while(stack.length&&ge(stack[stack.length-1].l,l))stack.pop();
+    const n={id:uid(),text:x.s,children:[]};
+    (stack.length?stack[stack.length-1].n.children:top).push(n);stack.push({l,x,n});
+  }
+  return top;
 }
 
 function startEdit(id,{replace=false,isNew=false}={}){
@@ -258,7 +304,7 @@ function startEdit(id,{replace=false,isNew=false}={}){
   const sel=getSelection(),r=document.createRange();r.selectNodeContents(e);if(replace)r.collapse(false);
   sel.removeAllRanges();sel.addRange(r);
   e.oninput=()=>layout();
-  e.onpaste=ev=>{ev.preventDefault();document.execCommand('insertText',false,ev.clipboardData.getData('text/plain'))};
+  e.onpaste=ev=>{ev.preventDefault();document.execCommand('insertText',false,ev.clipboardData.getData('text/plain').replace(/\r\n?/g,'\n'))};
   e.onblur=()=>commit();
   e.onkeydown=ev=>{
     ev.stopPropagation();if(ev.isComposing||ev.keyCode===229)return;
@@ -298,9 +344,7 @@ document.addEventListener('keydown',ev=>{
   const k=ev.key,ctrl=ev.ctrlKey||ev.metaKey;
   if(ctrl&&(k==='z'||k==='Z')){ev.preventDefault();ev.shiftKey?redo():undo();return}
   if(ctrl&&(k==='y'||k==='Y')){ev.preventDefault();redo();return}
-  if(ctrl&&k==='c'){copy(false);return}
-  if(ctrl&&k==='x'){copy(true);return}
-  if(ctrl&&k==='v'){ev.preventDefault();paste();return}
+  if(ctrl&&(k==='c'||k==='x'||k==='v'))return; // 下の copy / cut / paste で受ける
   if(ctrl&&k==='s'){ev.preventDefault();flush();return}
   if(ctrl&&(k==='='||k==='+'||k===';')){ev.preventDefault();zoomAt(innerWidth/2,innerHeight/2,1.2);return}
   if(ctrl&&k==='-'){ev.preventDefault();zoomAt(innerWidth/2,innerHeight/2,1/1.2);return}
@@ -313,6 +357,14 @@ document.addEventListener('keydown',ev=>{
   if(k.startsWith('Arrow')){ev.preventDefault();nav(k);return}
   if(k==='Escape'){return}
   if(!ctrl&&!ev.altKey&&(k.length===1||k==='Process'))startEdit(selId,{replace:true});
+});
+const mapKeys=ev=>!(editing||/^(INPUT|TEXTAREA)$/.test(ev.target.tagName)||!$('#cover').classList.contains('hide')||$('#home').classList.contains('open'));
+['copy','cut'].forEach(type=>document.addEventListener(type,ev=>{
+  if(!mapKeys(ev))return;const t=copy(type==='cut');if(t==null)return;
+  ev.preventDefault();ev.clipboardData.setData('text/plain',t);
+}));
+document.addEventListener('paste',ev=>{
+  if(!mapKeys(ev))return;ev.preventDefault();paste(ev.clipboardData.getData('text/plain'));
 });
 
 function toWorld(x,y){return{x:(x-view.x)/view.s,y:(y-view.y)/view.s}}

@@ -18,9 +18,9 @@ html,body{margin:0;height:100%;overflow:hidden;font-family:"Segoe UI","Yu Gothic
 .node.filled{background:var(--c);border-color:var(--c);color:var(--fg)}
 .node.sel{outline:3px solid #2f80ed;outline-offset:3px}
 .node.drop{outline:3px dashed #f2994a;outline-offset:3px}
-.node.drop-before{box-shadow:0 -5px 0 #f2994a}
-.node.drop-after{box-shadow:0 5px 0 #f2994a}
+.ghost{position:absolute;width:max-content;padding:6px 12px;border-radius:8px;border:2px dashed #f2994a;background:rgba(255,246,238,.92);color:#b0602a;font-size:14px;line-height:1.4;white-space:pre;pointer-events:none;z-index:9;box-shadow:0 2px 8px rgba(242,153,74,.25)}
 .node.dragging{opacity:.55;pointer-events:none;z-index:10}
+.node.dragging.hide{opacity:.18}
 .node[contenteditable=true]{white-space:pre-wrap;word-break:break-all;max-width:calc(40em + 60px);cursor:text;user-select:text;-webkit-user-select:text;outline:3px solid #2f80ed;outline-offset:3px}
 .tog{position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#fff;border:2px solid var(--c);font-size:11px;line-height:14px;text-align:center;color:#444;font-weight:700;cursor:pointer}
 .bar{position:fixed;display:flex;gap:4px;align-items:center;background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.12);padding:6px;z-index:20}
@@ -167,8 +167,7 @@ function layout(){
   let paths='';
   for(const i of vis){
     const e=els[i.n.id];e.style.left=i.x+'px';e.style.top=i.y+'px';
-    if(i.p){const p=info[i.p.id],x1=i.dir>0?p.x+p.w:p.x,y1=p.y+p.h/2,x2=i.dir>0?i.x:i.x+i.w,y2=i.y+i.h/2,mx=(x1+x2)/2;
-      paths+=`<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke="${LINE}" stroke-width="${i.d===1?4:2}" fill="none" stroke-linecap="round"/>`}
+    paths+=linkPath(i);
     if(i.d>0&&i.n.children.length&&(i.n.collapsed||i.n.id===selId)){
       const t=document.createElement('div');t.className='tog';t.dataset.tog=i.n.id;
       t.textContent=i.n.collapsed?countAll(i.n):'−';t.style.setProperty('--c',i.c);
@@ -177,6 +176,11 @@ function layout(){
     }
   }
   svg.innerHTML=paths;
+}
+// off はドラッグ中にずらして見せている分（id→y のずれ）
+function linkPath(i,off={}){
+  if(!i.p)return'';const p=info[i.p.id],x1=i.dir>0?p.x+p.w:p.x,y1=p.y+p.h/2+(off[p.n.id]||0),x2=i.dir>0?i.x:i.x+i.w,y2=i.y+i.h/2+(off[i.n.id]||0),mx=(x1+x2)/2;
+  return`<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke="${LINE}" stroke-width="${i.d===1?4:2}" fill="none" stroke-linecap="round"/>`;
 }
 // 1行40文字（全角1・半角0.5で数える）を超えたら折り返す。英単語はなるべく空白で切る
 function half(c){return /[ -~｡-ﾟ]/.test(c)}
@@ -203,6 +207,8 @@ function applyView(){
   stage.style.backgroundSize=`${24*view.s}px ${24*view.s}px`;
   stage.style.backgroundPosition=`${view.x}px ${view.y}px`;
   $('#zPct').textContent=Math.round(view.s*100)+'%';
+  // 拡大率と見ている場所（画面の中心に来る位置）をマップごとにブラウザへ覚え、F5 や開き直しでもそのまま出す
+  try{localStorage.setItem(VIEW+map.id,JSON.stringify({s:view.s,cx:(innerWidth/2-view.x)/view.s,cy:(innerHeight/2-view.y)/view.s}))}catch(e){}
 }
 function zoomAt(cx,cy,f){const s=Math.min(3,Math.max(.15,view.s*f)),k=s/view.s;view.x=cx-(cx-view.x)*k;view.y=cy-(cy-view.y)*k;view.s=s;applyView()}
 function bounds(){let a=1e9,b=1e9,c=-1e9,d=-1e9;for(const i of vis){a=Math.min(a,i.x);b=Math.min(b,i.y);c=Math.max(c,i.x+i.w);d=Math.max(d,i.y+i.h)}return{x:a,y:b,w:c-a,h:d-b}}
@@ -368,13 +374,51 @@ document.addEventListener('paste',ev=>{
 });
 
 function toWorld(x,y){return{x:(x-view.x)/view.s,y:(y-view.y)/view.s}}
-function clearDrop(){world.querySelectorAll('.drop,.drop-before,.drop-after').forEach(e=>e.classList.remove('drop','drop-before','drop-after'))}
+let shifted=null;
+function clearDrop(){
+  world.querySelectorAll('.drop').forEach(e=>e.classList.remove('drop'));world.querySelectorAll('.ghost').forEach(e=>e.remove());
+  svg.querySelectorAll('.ghostLink').forEach(e=>e.remove());if(drag&&els[drag.id])els[drag.id].classList.remove('hide');
+  if(shifted){for(const id in shifted){if(els[id])els[id].style.transform='';const t=world.querySelector(`.tog[data-tog="${id}"]`);if(t)t.style.transform=''}
+    shifted=null;svg.innerHTML=vis.map(i=>linkPath(i)).join('')}
+}
+// ドラッグ中、離したら入る場所に点線の影（同じ文字）と親からの点線の枝を出す。
+// 兄弟の間に入る時は前後の兄弟を上下に開けて、入る隙間を作って見せる
+function showGhost(d,ev){
+  const gi=info[drag.id],w=gi.w,h=gi.h,r=info[map.id],at=toWorld(ev.clientX,ev.clientY);let p,x,y,dir;
+  const sub=i=>i._sh??i.h,gap=i=>i.d===1?24:10,top=i=>i.y+i.h/2-sub(i)/2,bot=i=>i.y+i.h/2+sub(i)/2;
+  if(d&&d.mode==='child'){
+    p=info[d.t.id];dir=p.d===0?(at.x<0?-1:1):p.dir;
+    const ks=kids(p).filter(c=>c.n.id!==drag.id&&c.dir===dir),last=ks[ks.length-1];
+    x=dir>0?p.x+p.w+(p.d===0?64:36):p.x-(p.d===0?64:36)-w;
+    y=last?bot(last)+gap(last):p.y+p.h/2-h/2;
+  }else if(d){
+    const t=info[d.t.id];p=info[t.p.id];dir=t.dir;
+    const S=kids(p).filter(c=>c.n.id!==drag.id&&c.dir===dir),ins=S.indexOf(t)+(d.mode==='after'?1:0),D=(h+gap(t))/2;
+    x=dir>0?t.x:t.x+t.w-w;
+    y=ins<S.length?top(S[ins])+D-gap(t)-h:bot(S[ins-1])-D+gap(t);
+    shifted={};S.forEach((c,k)=>walk(c.n,n=>{if(info[n.id]&&!contains(find(drag.id),n))shifted[n.id]=k<ins?-D:D}));
+    for(const id in shifted){els[id].style.transform=`translateY(${shifted[id]}px)`;const tg=world.querySelector(`.tog[data-tog="${id}"]`);if(tg)tg.style.transform=`translateY(${shifted[id]}px)`}
+    svg.innerHTML=vis.map(i=>linkPath(i,shifted)).join('');
+  }else if(gi.d===1){
+    dir=at.x<0?-1:1;if(dir===gi.dir)return;
+    p=r;x=dir>0?r.x+r.w+64:r.x-64-w;y=at.y-h/2;
+  }else return;
+  els[drag.id].classList.add('hide');
+  const g=document.createElement('div');g.className='ghost';g.textContent=els[drag.id].textContent;
+  g.style.left=x+'px';g.style.top=y+'px';world.appendChild(g);
+  const x1=dir>0?p.x+p.w:p.x,y1=p.y+p.h/2+(shifted&&shifted[p.n.id]||0),x2=dir>0?x:x+g.offsetWidth,y2=y+g.offsetHeight/2,mx=(x1+x2)/2;
+  const l=document.createElementNS('http://www.w3.org/2000/svg','path');l.setAttribute('class','ghostLink');
+  l.setAttribute('d',`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+  l.setAttribute('stroke','#f2994a');l.setAttribute('stroke-width','2.5');l.setAttribute('stroke-dasharray','6 5');l.setAttribute('fill','none');l.setAttribute('stroke-linecap','round');
+  svg.appendChild(l);
+}
+// 当たり判定はドラッグ前の配置で取る（隙間を開けて動いた分に引きずられて行き先がちらつかないように）
 function dropTarget(ev){
-  const el=document.elementFromPoint(ev.clientX,ev.clientY);const ne=el&&el.closest&&el.closest('.node');
-  if(!ne)return null;const t=find(ne.dataset.id),n=find(drag.id);if(!t||contains(n,t))return null;
-  const r=ne.getBoundingClientRect(),rel=(ev.clientY-r.top)/r.height;
+  const at=toWorld(ev.clientX,ev.clientY),n=find(drag.id);
+  const i=vis.find(i=>at.x>=i.x&&at.x<=i.x+i.w&&at.y>=i.y&&at.y<=i.y+i.h&&!contains(n,i.n));
+  if(!i)return null;const t=i.n,rel=(at.y-i.y)/i.h;
   const mode=t===map?'child':rel<.25?'before':rel>.75?'after':'child';
-  return{el:ne,t,mode};
+  return{el:els[t.id],t,mode};
 }
 stage.addEventListener('pointerdown',ev=>{
   if(ev.button!==0&&ev.button!==1)return;
@@ -391,7 +435,7 @@ addEventListener('pointermove',ev=>{
   if(drag.id===map.id)return;
   if(!drag.moved&&Math.hypot(dx,dy)<5)return;
   drag.moved=true;const e=els[drag.id];e.classList.add('dragging');e.style.transform=`translate(${dx/view.s}px,${dy/view.s}px)`;
-  clearDrop();const d=dropTarget(ev);if(d)d.el.classList.add(d.mode==='child'?'drop':'drop-'+d.mode);
+  clearDrop();const d=dropTarget(ev);if(d&&d.mode==='child')d.el.classList.add('drop');showGhost(d,ev);
 });
 addEventListener('pointerup',ev=>{
   if(!drag)return;const g=drag;drag=null;stage.classList.remove('panning');clearDrop();
@@ -415,7 +459,8 @@ addEventListener('pointerup',ev=>{
 });
 stage.addEventListener('dblclick',ev=>{const ne=ev.target.closest('.node');if(ne&&!ne.isContentEditable)startEdit(ne.dataset.id)});
 stage.addEventListener('wheel',ev=>{ev.preventDefault();
-  if(ev.ctrlKey||ev.metaKey){zoomAt(ev.clientX,ev.clientY,Math.exp(-ev.deltaY*.0015));return}
+  // タッチパッドのピンチは Ctrl 付きの小さな値が細かく来るので、マウスのホイールより大きく効かせる
+  if(ev.ctrlKey||ev.metaKey){const d=ev.deltaMode?ev.deltaY*16:ev.deltaY;zoomAt(ev.clientX,ev.clientY,Math.exp(-Math.max(-.2,Math.min(.2,d*(Math.abs(d)<50?.01:.0015)))));return}
   const k=ev.deltaMode===1?16:ev.deltaMode===2?innerHeight:1;let dx=ev.deltaX*k,dy=ev.deltaY*k;
   if(ev.shiftKey&&!dx){dx=dy;dy=0}
   view.x-=dx;view.y-=dy;applyView()},{passive:false});
@@ -530,11 +575,15 @@ async function openMap(m,isNew){
   map=m;selId=map.id;undoStack=[];redoStack=[];lastSaved=isNew?'':JSON.stringify(map);
   $('#home').classList.remove('open');
   try{sessionStorage.setItem(OPEN,map.id)}catch(e){}
-  render();view={x:innerWidth/2,y:innerHeight/2,s:1};applyView();if(map.children.length)fit();
+  let v=null;try{v=JSON.parse(localStorage.getItem(VIEW+map.id))}catch(e){}
+  render();
+  if(v&&v.s>0)view={s:v.s,x:innerWidth/2-v.cx*v.s,y:innerHeight/2-v.cy*v.s};
+  else{view={x:innerWidth/2,y:innerHeight/2,s:1};if(map.children.length)fit()}
+  applyView();
   if(isNew){flush();startEdit(map.id)}else setStatus('保存済み');
 }
 // 開いているマップの id だけをタブに覚えておき、F5 でも同じマップに戻る（中身はブラウザに残さない）
-const OPEN='nmind.open';
+const OPEN='nmind.open',VIEW='nmind.view.';
 async function loadMap(id,quiet){try{await openMap(JSON.parse(await call('loadMap',id)),false);return true}catch(e){if(!quiet)alert('開けませんでした');return false}}
 
 // ---------- ホーム（マップ一覧） ----------
